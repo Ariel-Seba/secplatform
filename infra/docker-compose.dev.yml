@@ -1,0 +1,43 @@
+# Dev override — exposes ports directly, no Traefik, no SSL
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+services:
+
+  traefik:
+    profiles: ["disabled"]   # skip Traefik in dev
+
+  frontend:
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NODE_ENV=development
+
+  backend:
+    ports:
+      - "8000:8000"
+
+  module-pentest:
+    ports:
+      - "8001:8001"
+
+  module-discovery:
+    ports:
+      - "8002:8002"
+
+  module-compliance:
+    ports:
+      - "8003:8003"
+    read_only: false          # easier debugging in dev
+
+  report-engine:
+    ports:
+      - "8010:8010"
+
+  postgres:
+    ports:
+      - "5432:5432"           # acceso directo a la DB en dev
+
+  grafana:
+    ports:
+      - "3001:3000"           # http://localhost:3001
