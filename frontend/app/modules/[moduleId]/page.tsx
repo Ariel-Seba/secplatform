@@ -1,20 +1,31 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { SeverityBadge } from "@/components/ui/SeverityBadge";
 import { formatDate, statusColor, cn } from "@/lib/utils";
-import { Play, RefreshCw, FileText, Target, Radar, ShieldCheck, Search, Eye } from "lucide-react";
+import { Play, RefreshCw, FileText, Target, Radar, ShieldCheck, Search, Eye, Terminal } from "lucide-react";
 import type { Severity } from "@/lib/utils";
 
 const moduleConfig: Record<string, { label: string; icon: React.ElementType; color: string; placeholder: string; available: boolean }> = {
-  pentest:      { label: "Pentest",      icon: Target,      color: "text-sp-high",    placeholder: "192.168.1.0/24 o https://target.com", available: true },
-  discovery:    { label: "Discovery",    icon: Radar,       color: "text-sp-cyan",    placeholder: "target.com",                           available: true },
-  compliance:   { label: "Compliance",   icon: ShieldCheck, color: "text-sp-teal",    placeholder: "192.168.1.100 o ./docker-compose.yml", available: true },
-  forensics:      { label: "Forensics",    icon: Search,      color: "text-sp-purple",  placeholder: "",  available: false },
-  "threat-intel": { label: "Threat Intel", icon: Eye,        color: "text-sp-orange",  placeholder: "",  available: false },
+  pentest:        { label: "Pentest",      icon: Target,      color: "text-sp-high",   placeholder: "192.168.1.0/24 o https://target.com", available: true },
+  discovery:      { label: "Discovery",    icon: Radar,       color: "text-sp-cyan",   placeholder: "target.com",                           available: true },
+  compliance:     { label: "Compliance",   icon: ShieldCheck, color: "text-sp-teal",   placeholder: "192.168.1.100 o ./docker-compose.yml", available: true },
+  forensics:      { label: "Forensics",    icon: Search,      color: "text-sp-purple", placeholder: "", available: false },
+  "threat-intel": { label: "Threat Intel", icon: Eye,         color: "text-sp-orange", placeholder: "", available: false },
 };
+
+interface JobDetail {
+  job_id: string;
+  status: string;
+  progress: number;
+  target?: string;
+  module?: string;
+  created_at?: string;
+  result?: Record<string, unknown> | null;
+  logs?: string[];
+}
 
 export default function ModulePage() {
   const { moduleId } = useParams<{ moduleId: string }>();
@@ -37,18 +48,24 @@ export default function ModulePage() {
 
   const [target, setTarget] = useState("");
   const [jobs, setJobs] = useState<Record<string, unknown>[]>([]);
-  const [selected, setSelected] = useState<Record<string, unknown> | null>(null);
+  const [selected, setSelected] = useState<JobDetail | null>(null);
   const [scanning, setScanning] = useState(false);
   const [polling, setPolling] = useState(false);
+  const logsEndRef = useRef<HTMLDivElement>(null);
 
   const loadJobs = useCallback(async () => {
     try {
-      const all = await api.get<Record<string, unknown>[]>("/api/modules/jobs/");
+      const all = await api.get<Record<string, unknown>[]>("/api/modules/jobs");
       setJobs(all.filter((j) => j.module === moduleId));
     } catch {}
   }, [moduleId]);
 
   useEffect(() => { loadJobs(); }, [loadJobs]);
+
+  // Auto-scroll logs to bottom when new entries arrive
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [selected?.logs?.length]);
 
   async function handleScan(e: React.FormEvent) {
     e.preventDefault();
@@ -57,7 +74,7 @@ export default function ModulePage() {
     try {
       const res = await api.post<{ job_id: string }>(`/api/modules/${moduleId}/scan`, { target });
       await loadJobs();
-      pollJob(res.job_id);
+      startPolling(res.job_id);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Error al iniciar scan");
     } finally {
@@ -65,11 +82,11 @@ export default function ModulePage() {
     }
   }
 
-  function pollJob(jobId: string) {
+  function startPolling(jobId: string) {
     setPolling(true);
     const interval = setInterval(async () => {
       try {
-        const status = await api.get<Record<string, unknown>>(`/api/modules/${moduleId}/scan/${jobId}`);
+        const status = await api.get<JobDetail>(`/api/modules/${moduleId}/scan/${jobId}`);
         setSelected(status);
         await loadJobs();
         if (status.status === "completed" || status.status === "failed") {
@@ -82,6 +99,21 @@ export default function ModulePage() {
       }
     }, 2500);
   }
+
+  async function selectJob(job: Record<string, unknown>) {
+    try {
+      const detail = await api.get<JobDetail>(`/api/modules/${moduleId}/scan/${job.job_id}`);
+      setSelected(detail);
+      if (detail.status === "running" || detail.status === "pending") {
+        startPolling(detail.job_id);
+      }
+    } catch {
+      setSelected(job as unknown as JobDetail);
+    }
+  }
+
+  const logs = selected?.logs ?? [];
+  const isActive = selected?.status === "running" || selected?.status === "pending";
 
   return (
     <div className="space-y-6">
@@ -108,9 +140,9 @@ export default function ModulePage() {
             placeholder={mod.placeholder}
             required
           />
-          <button type="submit" disabled={scanning} className="sp-btn-primary px-6">
+          <button type="submit" disabled={scanning} className="sp-btn-primary px-6 flex items-center gap-2">
             {scanning ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            {scanning ? "Scanning..." : "Iniciar"}
+            {scanning ? "Iniciando..." : "Iniciar"}
           </button>
         </form>
       </div>
@@ -132,18 +164,18 @@ export default function ModulePage() {
               {jobs.map((job) => (
                 <button
                   key={job.job_id as string}
-                  onClick={() => setSelected(job)}
+                  onClick={() => selectJob(job)}
                   className={cn(
                     "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all",
                     selected?.job_id === job.job_id
                       ? "bg-sp-bg-elevated border border-sp-cyan/30"
-                      : "bg-sp-bg-secondary border border-sp-border hover:border-sp-border"
+                      : "bg-sp-bg-secondary border border-sp-border hover:border-sp-cyan/20"
                   )}
                 >
                   <div className={cn("w-2 h-2 rounded-full flex-shrink-0", {
                     "bg-sp-low": job.status === "completed",
                     "bg-sp-cyan animate-pulse": job.status === "running",
-                    "bg-sp-orange": job.status === "pending",
+                    "bg-sp-orange animate-pulse": job.status === "pending",
                     "bg-sp-critical": job.status === "failed",
                   })} />
                   <div className="flex-1 min-w-0">
@@ -160,13 +192,13 @@ export default function ModulePage() {
         </div>
 
         {/* Job detail */}
-        <div className="sp-card p-5">
+        <div className="sp-card p-5 flex flex-col gap-4">
           {!selected ? (
             <div className="flex items-center justify-center h-48 text-sp-muted text-sm">
               Seleccioná un scan para ver el detalle
             </div>
           ) : (
-            <div className="space-y-4">
+            <>
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold text-sp-text text-sm">Detalle del Scan</h2>
                 {polling && <RefreshCw className="w-4 h-4 text-sp-cyan animate-spin" />}
@@ -174,10 +206,10 @@ export default function ModulePage() {
 
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  { label: "Job ID", value: (selected.job_id as string).slice(0, 8) + "...", mono: true },
-                  { label: "Estado",  value: (selected.status as string).toUpperCase(), color: statusColor(selected.status as string) },
-                  { label: "Target",  value: selected.target as string },
-                  { label: "Módulo",  value: selected.module as string, mono: true },
+                  { label: "Job ID", value: selected.job_id.slice(0, 8) + "...", mono: true },
+                  { label: "Estado",  value: selected.status.toUpperCase(), color: statusColor(selected.status) },
+                  { label: "Target",  value: selected.target ?? "—" },
+                  { label: "Módulo",  value: selected.module ?? moduleId, mono: true },
                 ].map(({ label, value, mono, color }) => (
                   <div key={label} className="bg-sp-bg-secondary rounded-lg p-3">
                     <p className="text-xs text-sp-muted mb-1">{label}</p>
@@ -188,40 +220,94 @@ export default function ModulePage() {
                 ))}
               </div>
 
-              {selected.status === "running" && (
+              {/* Progress bar — visible while running or pending */}
+              {(isActive || selected.status === "completed") && (
                 <div>
                   <div className="flex justify-between text-xs text-sp-muted mb-1">
                     <span>Progreso</span>
-                    <span className="font-mono">{selected.progress as number}%</span>
+                    <span className="font-mono">{selected.progress ?? 0}%</span>
                   </div>
                   <div className="h-1.5 bg-sp-bg-secondary rounded-full overflow-hidden border border-sp-border">
                     <div
-                      className="h-full bg-sp-cyan rounded-full transition-all duration-500"
-                      style={{ width: `${selected.progress}%` }}
+                      className={cn(
+                        "h-full rounded-full transition-all duration-700",
+                        selected.status === "completed" ? "bg-sp-low" : "bg-sp-cyan"
+                      )}
+                      style={{ width: `${selected.progress ?? 0}%` }}
                     />
                   </div>
                 </div>
               )}
 
-              {selected.status === "completed" && (
-                <div className="pt-2">
+              {/* Live logs terminal */}
+              {logs.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Terminal className="w-3.5 h-3.5 text-sp-muted" />
+                    <p className="text-xs font-semibold text-sp-muted uppercase tracking-widest">Log de ejecución</p>
+                    {isActive && <span className="ml-auto text-xs text-sp-cyan animate-pulse">● live</span>}
+                  </div>
+                  <div className="bg-[#0a0d12] border border-sp-border rounded-lg p-3 font-mono text-xs leading-relaxed h-48 overflow-y-auto">
+                    {logs.map((line, i) => {
+                      const isDiscovery = line.includes("Discovered open port");
+                      const isError = line.includes("Error") || line.includes("failed");
+                      const isComplete = line.includes("completado") || line.includes("finalizado");
+                      return (
+                        <p key={i} className={cn(
+                          "whitespace-pre-wrap break-all",
+                          isDiscovery ? "text-sp-low font-semibold" :
+                          isError     ? "text-sp-critical" :
+                          isComplete  ? "text-sp-cyan" :
+                          "text-sp-muted"
+                        )}>
+                          {line}
+                        </p>
+                      );
+                    })}
+                    <div ref={logsEndRef} />
+                  </div>
+                </div>
+              )}
+
+              {/* Findings — only when completed */}
+              {selected.status === "completed" && selected.result && (
+                <div>
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-xs font-semibold text-sp-muted uppercase tracking-widest">Hallazgos</p>
-                    <button className="sp-btn-ghost text-xs py-1 px-3">
+                    <button className="sp-btn-ghost text-xs py-1 px-3 flex items-center gap-1">
                       <FileText className="w-3 h-3" />
                       Generar Reporte
                     </button>
                   </div>
-                  {selected.result ? (
-                    <div className="bg-sp-bg-secondary rounded-lg p-3 font-mono text-xs text-sp-muted max-h-40 overflow-y-auto">
-                      <pre>{JSON.stringify(selected.result, null, 2)}</pre>
-                    </div>
-                  ) : (
-                    <p className="text-sp-muted text-sm">Sin hallazgos disponibles</p>
-                  )}
+                  {(() => {
+                    const res = selected.result as Record<string, unknown>;
+                    const findings = (res.findings as Record<string, unknown>[]) ?? [];
+                    if (findings.length === 0) {
+                      return <p className="text-sp-muted text-sm">Sin puertos abiertos encontrados</p>;
+                    }
+                    return (
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                        {findings.map((f, i) => (
+                          <div key={i} className="flex items-start gap-2 bg-sp-bg-secondary rounded-lg px-3 py-2">
+                            <SeverityBadge severity={f.severity as Severity} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-mono text-sp-text">{f.title as string}</p>
+                              <p className="text-xs text-sp-muted truncate">{f.description as string}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
-            </div>
+
+              {selected.status === "failed" && (
+                <p className="text-sp-critical text-sm bg-sp-critical/10 rounded-lg px-4 py-2">
+                  {(selected.result as Record<string, unknown>)?.error as string ?? "El scan falló"}
+                </p>
+              )}
+            </>
           )}
         </div>
       </div>

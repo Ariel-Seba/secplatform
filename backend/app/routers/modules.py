@@ -25,13 +25,16 @@ class ScanRequest(BaseModel):
     options: dict = {}
 
 
-async def call_module(module_id: str, path: str, method: str = "GET", json: dict | None = None):
+async def call_module(module_id: str, path: str, method: str = "GET", body: dict | None = None):
     url = MODULE_URLS.get(module_id)
     if not url:
         raise HTTPException(status_code=404, detail=f"Module not found: {module_id}")
     headers = {"Authorization": f"Bearer {settings.module_secret}"}
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await getattr(client, method.lower())(f"{url}{path}", headers=headers, json=json)
+        kwargs: dict = {"headers": headers}
+        if body is not None:
+            kwargs["json"] = body
+        resp = await getattr(client, method.lower())(f"{url}{path}", **kwargs)
         resp.raise_for_status()
         return resp.json()
 
@@ -99,16 +102,13 @@ async def get_scan_status(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # job.id == module's job_id, so we can poll the module directly
+    module_status: dict = {}
     try:
         module_status = await call_module(module_id, f"/scan/{job.id}")
         new_status = module_status.get("status", job.status)
         job.progress = module_status.get("progress", job.progress)
         job.status = new_status
-        if new_status == "completed":
-            job.result = module_status.get("result")
-            job.completed_at = datetime.utcnow()
-        elif new_status == "failed":
+        if new_status in ("completed", "failed"):
             job.result = module_status.get("result")
             job.completed_at = datetime.utcnow()
         await db.commit()
@@ -124,6 +124,7 @@ async def get_scan_status(
         "created_at": job.created_at,
         "completed_at": job.completed_at,
         "result": job.result,
+        "logs": module_status.get("logs", []),
     }
 
 
