@@ -6,7 +6,7 @@
   "version": "1.0.0",
   "icon": "radar",
   "color": "#00d4ff",
-  "tools": ["subfinder", "httpx", "nuclei", "amass"],
+  "tools": ["dnspython", "httpx", "portscan"],
   "permissions_required": ["module:discovery:execute"],
   "port": 8002,
   "async": true,

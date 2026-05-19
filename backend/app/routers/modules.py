@@ -7,7 +7,7 @@ import httpx, uuid
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.scan import ScanJob, Finding
-from app.auth.dependencies import get_current_user, require_module_access
+from app.auth.dependencies import get_current_user
 from app.core.config import get_settings
 
 router = APIRouter()
@@ -61,7 +61,8 @@ async def start_scan(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _ = Depends(require_module_access(module_id))
+    if user.role not in (UserRole.superadmin, UserRole.admin) and module_id not in user.allowed_modules:
+        raise HTTPException(status_code=403, detail=f"No access to module: {module_id}")
 
     result = await call_module(module_id, "/scan", "POST", {
         "target": body.target, "options": body.options

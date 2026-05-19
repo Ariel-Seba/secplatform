@@ -18,6 +18,8 @@ FROM base AS production
 COPY --from=builder /root/.local /home/moduleuser/.local
 COPY --chown=moduleuser:modulegroup . .
 
+RUN mkdir -p /app/scans && chown moduleuser:modulegroup /app/scans
+
 USER moduleuser
 
 ENV PATH=/home/moduleuser/.local/bin:$PATH

@@ -50,11 +50,14 @@ export async function login(username: string, password: string) {
   localStorage.setItem("access_token", data.access_token);
   localStorage.setItem("refresh_token", data.refresh_token);
   localStorage.setItem("user", JSON.stringify(data.user));
+  // Also set a cookie so the Next.js middleware can verify auth on navigation
+  document.cookie = `access_token=${data.access_token}; path=/; SameSite=Strict`;
   return data.user;
 }
 
 export function logout() {
   localStorage.clear();
+  document.cookie = "access_token=; path=/; Max-Age=0";
   window.location.href = "/login";
 }
 
