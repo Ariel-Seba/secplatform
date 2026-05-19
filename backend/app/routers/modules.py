@@ -36,7 +36,7 @@ async def call_module(module_id: str, path: str, method: str = "GET", json: dict
         return resp.json()
 
 
-@router.get("/")
+@router.get("")
 async def list_modules(user: User = Depends(get_current_user)):
     if user.role in (UserRole.superadmin, UserRole.admin):
         visible = list(MODULE_URLS.keys())
@@ -127,7 +127,7 @@ async def get_scan_status(
     }
 
 
-@router.get("/jobs/")
+@router.get("/jobs")
 async def list_jobs(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),

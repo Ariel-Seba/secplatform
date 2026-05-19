@@ -5,7 +5,27 @@ function getToken(): string | null {
   return localStorage.getItem("access_token");
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function tryRefresh(): Promise<string | null> {
+  const refreshToken = localStorage.getItem("refresh_token");
+  if (!refreshToken) return null;
+  try {
+    const res = await fetch("/api/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    localStorage.setItem("access_token", data.access_token);
+    if (data.refresh_token) localStorage.setItem("refresh_token", data.refresh_token);
+    document.cookie = `access_token=${data.access_token}; path=/; SameSite=Strict`;
+    return data.access_token;
+  } catch {
+    return null;
+  }
+}
+
+async function request<T>(path: string, options: RequestInit = {}, retry = false): Promise<T> {
   const token = getToken();
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
@@ -16,9 +36,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     },
   });
 
-  if (res.status === 401) {
+  if (res.status === 401 && !retry) {
+    const newToken = await tryRefresh();
+    if (newToken) return request<T>(path, options, true);
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
+    localStorage.removeItem("user");
+    document.cookie = "access_token=; path=/; Max-Age=0";
     window.location.href = "/login";
     throw new Error("Unauthorized");
   }
@@ -50,7 +74,6 @@ export async function login(username: string, password: string) {
   localStorage.setItem("access_token", data.access_token);
   localStorage.setItem("refresh_token", data.refresh_token);
   localStorage.setItem("user", JSON.stringify(data.user));
-  // Also set a cookie so the Next.js middleware can verify auth on navigation
   document.cookie = `access_token=${data.access_token}; path=/; SameSite=Strict`;
   return data.user;
 }

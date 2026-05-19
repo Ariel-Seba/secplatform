@@ -47,7 +47,7 @@ interface PlatformUser {
   role: string;
   created_at: string;
   last_login: string | null;
-  groups: Group[];
+  allowed_modules: string[];
 }
 
 function ModuleChip({ id }: { id: string }) {
@@ -220,7 +220,7 @@ export default function UsersPage() {
                 </thead>
                 <tbody className="divide-y divide-sp-border">
                   {users.map((u) => {
-                    const modules = u.groups.flatMap((g) => g.allowed_modules).filter((v, i, a) => a.indexOf(v) === i);
+                    const modules = u.allowed_modules || [];
                     return (
                       <tr key={u.id} className="hover:bg-sp-bg-secondary transition-all">
                         <td className="px-5 py-3">

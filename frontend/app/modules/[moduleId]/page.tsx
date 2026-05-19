@@ -5,19 +5,35 @@ import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { SeverityBadge } from "@/components/ui/SeverityBadge";
 import { formatDate, statusColor, cn } from "@/lib/utils";
-import { Play, RefreshCw, FileText, Target, Radar, ShieldCheck } from "lucide-react";
+import { Play, RefreshCw, FileText, Target, Radar, ShieldCheck, Search, Eye } from "lucide-react";
 import type { Severity } from "@/lib/utils";
 
-const moduleConfig: Record<string, { label: string; icon: React.ElementType; color: string; placeholder: string }> = {
-  pentest:    { label: "Pentest",     icon: Target,      color: "text-sp-high",  placeholder: "192.168.1.0/24 o https://target.com" },
-  discovery:  { label: "Discovery",   icon: Radar,       color: "text-sp-cyan",  placeholder: "target.com" },
-  compliance: { label: "Compliance",  icon: ShieldCheck, color: "text-sp-teal",  placeholder: "192.168.1.100 o ./docker-compose.yml" },
+const moduleConfig: Record<string, { label: string; icon: React.ElementType; color: string; placeholder: string; available: boolean }> = {
+  pentest:      { label: "Pentest",      icon: Target,      color: "text-sp-high",    placeholder: "192.168.1.0/24 o https://target.com", available: true },
+  discovery:    { label: "Discovery",    icon: Radar,       color: "text-sp-cyan",    placeholder: "target.com",                           available: true },
+  compliance:   { label: "Compliance",   icon: ShieldCheck, color: "text-sp-teal",    placeholder: "192.168.1.100 o ./docker-compose.yml", available: true },
+  forensics:      { label: "Forensics",    icon: Search,      color: "text-sp-purple",  placeholder: "",  available: false },
+  "threat-intel": { label: "Threat Intel", icon: Eye,        color: "text-sp-orange",  placeholder: "",  available: false },
 };
 
 export default function ModulePage() {
   const { moduleId } = useParams<{ moduleId: string }>();
-  const mod = moduleConfig[moduleId] ?? { label: moduleId, icon: Target, color: "text-sp-cyan", placeholder: "target" };
+  const mod = moduleConfig[moduleId] ?? { label: moduleId, icon: Target, color: "text-sp-cyan", placeholder: "target", available: false };
   const Icon = mod.icon;
+
+  if (!mod.available) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 gap-4 text-center">
+        <div className={cn("p-4 rounded-2xl bg-sp-bg-elevated border border-sp-border", mod.color)}>
+          <Icon className="w-8 h-8" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold text-sp-text">{mod.label}</h1>
+          <p className="text-sp-muted text-sm mt-1">Módulo en desarrollo — próximamente disponible</p>
+        </div>
+      </div>
+    );
+  }
 
   const [target, setTarget] = useState("");
   const [jobs, setJobs] = useState<Record<string, unknown>[]>([]);

@@ -41,7 +41,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     await db.execute(update(User).where(User.id == user.id).values(last_login=datetime.utcnow()))
     await db.commit()
 
-    token_data = {"sub": user.id, "username": user.username}
+    token_data = {"sub": str(user.id), "username": user.username}
     return TokenResponse(
         access_token=create_access_token(token_data),
         refresh_token=create_refresh_token(token_data),
@@ -62,7 +62,7 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
         payload = decode_token(body.refresh_token)
         if payload.get("type") != "refresh":
             raise ValueError
-        user_id = payload.get("sub")
+        user_id = int(payload.get("sub"))
     except Exception:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
@@ -71,7 +71,7 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    token_data = {"sub": user.id, "username": user.username}
+    token_data = {"sub": str(user.id), "username": user.username}
     return TokenResponse(
         access_token=create_access_token(token_data),
         refresh_token=create_refresh_token(token_data),

@@ -23,7 +23,7 @@ class ReportCreate(BaseModel):
     metadata: dict = {}
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED)
 async def create_report(
     body: ReportCreate,
     db: AsyncSession = Depends(get_db),
@@ -69,7 +69,7 @@ async def create_report(
     return {"report_id": report.id, "status": "generating"}
 
 
-@router.get("/")
+@router.get("")
 async def list_reports(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),

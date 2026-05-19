@@ -18,7 +18,7 @@ async def get_current_user(
         payload = decode_token(credentials.credentials)
         if payload.get("type") != "access":
             raise ValueError("Invalid token type")
-        user_id: int = payload.get("sub")
+        user_id: int = int(payload.get("sub"))
     except (JWTError, ValueError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

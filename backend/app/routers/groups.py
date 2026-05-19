@@ -24,7 +24,7 @@ class GroupUpdate(BaseModel):
     allowed_modules: list[str] | None = None
 
 
-@router.get("/", dependencies=[Depends(require_role(UserRole.admin, UserRole.superadmin))])
+@router.get("", dependencies=[Depends(require_role(UserRole.admin, UserRole.superadmin))])
 async def list_groups(db: AsyncSession = Depends(get_db)):
     # Fetch groups + member count in one query
     count_sq = (
@@ -46,7 +46,7 @@ async def list_groups(db: AsyncSession = Depends(get_db)):
     ]
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED,
+@router.post("", status_code=status.HTTP_201_CREATED,
              dependencies=[Depends(require_role(UserRole.admin, UserRole.superadmin))])
 async def create_group(body: GroupCreate, db: AsyncSession = Depends(get_db)):
     invalid = [m for m in body.allowed_modules if m not in AVAILABLE_MODULES]

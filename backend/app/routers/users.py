@@ -38,7 +38,7 @@ class UserOut(BaseModel):
         from_attributes = True
 
 
-@router.get("/", dependencies=[Depends(require_role(UserRole.admin, UserRole.superadmin))])
+@router.get("", dependencies=[Depends(require_role(UserRole.admin, UserRole.superadmin))])
 async def list_users(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User))
     users = result.scalars().all()
@@ -52,7 +52,7 @@ async def list_users(db: AsyncSession = Depends(get_db)):
     ]
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED,
+@router.post("", status_code=status.HTTP_201_CREATED,
              dependencies=[Depends(require_role(UserRole.admin, UserRole.superadmin))])
 async def create_user(body: UserCreate, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(User).where(User.username == body.username))
