@@ -3,10 +3,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from datetime import datetime
-import httpx, uuid
+import httpx
 from app.database import get_db
 from app.models.user import User, UserRole
-from app.models.scan import ScanJob, Finding
+from app.models.scan import ScanJob
 from app.auth.dependencies import get_current_user
 from app.core.config import get_settings
 
@@ -68,8 +68,13 @@ async def start_scan(
         "target": body.target, "options": body.options
     })
 
+    # Use the module's own job_id as DB primary key so polling uses the same UUID
+    job_id = result.get("job_id")
+    if not job_id:
+        raise HTTPException(status_code=502, detail="Module did not return a job_id")
+
     job = ScanJob(
-        id=str(uuid.uuid4()),
+        id=job_id,
         module=module_id,
         target=body.target,
         config=body.options,
@@ -79,7 +84,7 @@ async def start_scan(
     db.add(job)
     await db.commit()
 
-    return {"job_id": job.id, "module_job_id": result.get("job_id"), "status": "pending"}
+    return {"job_id": job.id, "status": "pending"}
 
 
 @router.get("/{module_id}/scan/{job_id}")
@@ -94,14 +99,19 @@ async def get_scan_status(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    # job.id == module's job_id, so we can poll the module directly
     try:
-        module_status = await call_module(module_id, f"/scan/{job_id}")
-        if module_status.get("status") == "completed" and job.status != "completed":
-            job.status = "completed"
-            job.progress = 100
+        module_status = await call_module(module_id, f"/scan/{job.id}")
+        new_status = module_status.get("status", job.status)
+        job.progress = module_status.get("progress", job.progress)
+        job.status = new_status
+        if new_status == "completed":
             job.result = module_status.get("result")
             job.completed_at = datetime.utcnow()
-            await db.commit()
+        elif new_status == "failed":
+            job.result = module_status.get("result")
+            job.completed_at = datetime.utcnow()
+        await db.commit()
     except Exception:
         pass
 

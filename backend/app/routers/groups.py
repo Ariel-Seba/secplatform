@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from pydantic import BaseModel
 from app.database import get_db
-from app.models.user import Group, UserRole
+from app.models.user import Group, UserRole, UserGroup
 from app.auth.dependencies import require_role
 
 router = APIRouter()
@@ -26,15 +26,23 @@ class GroupUpdate(BaseModel):
 
 @router.get("/", dependencies=[Depends(require_role(UserRole.admin, UserRole.superadmin))])
 async def list_groups(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Group))
-    groups = result.scalars().all()
+    # Fetch groups + member count in one query
+    count_sq = (
+        select(UserGroup.c.group_id, func.count().label("cnt"))
+        .group_by(UserGroup.c.group_id)
+        .subquery()
+    )
+    rows = await db.execute(
+        select(Group, count_sq.c.cnt)
+        .outerjoin(count_sq, Group.id == count_sq.c.group_id)
+    )
     return [
         {
             "id": g.id, "name": g.name, "description": g.description,
             "role": g.role, "allowed_modules": g.allowed_modules,
-            "member_count": len(g.users),
+            "member_count": cnt or 0,
         }
-        for g in groups
+        for g, cnt in rows.all()
     ]
 
 

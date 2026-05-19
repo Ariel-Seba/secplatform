@@ -65,5 +65,5 @@ class Group(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
     users: Mapped[list["User"]] = relationship(
-        secondary=UserGroup, back_populates="groups", lazy="selectin"
+        secondary=UserGroup, back_populates="groups", lazy="noload"
     )
