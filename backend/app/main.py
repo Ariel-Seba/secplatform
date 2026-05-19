@@ -58,7 +58,7 @@ async def health():
 
     # Redis ping
     try:
-        r = redis_lib.from_url(settings.REDIS_URL)
+        r = redis_lib.from_url(settings.redis_url)
         r.ping()
         result["redis"] = "ok"
     except Exception:
