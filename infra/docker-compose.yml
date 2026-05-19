@@ -42,7 +42,7 @@ services:
       target: production
     restart: unless-stopped
     environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - BACKEND_URL=http://backend:8000
       - NODE_ENV=production
     networks:
       - secplatform-net
