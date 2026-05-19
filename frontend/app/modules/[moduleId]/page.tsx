@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { SeverityBadge } from "@/components/ui/SeverityBadge";
 import { formatDate, statusColor, cn } from "@/lib/utils";
-import { Play, RefreshCw, FileText, Target, Radar, ShieldCheck, Search, Eye, Terminal } from "lucide-react";
+import { Play, RefreshCw, FileText, Target, Radar, ShieldCheck, Search, Eye, Terminal, Download, X, ChevronDown } from "lucide-react";
 import type { Severity } from "@/lib/utils";
 
 const moduleConfig: Record<string, { label: string; icon: React.ElementType; color: string; placeholder: string; available: boolean }> = {
@@ -53,6 +53,13 @@ export default function ModulePage() {
   const [polling, setPolling] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
+  const [reportModal, setReportModal] = useState(false);
+  const [reportTemplate, setReportTemplate] = useState("technical");
+  const [reportClient, setReportClient] = useState("");
+  const [reportTitle, setReportTitle] = useState("");
+  const [generatingReport, setGeneratingReport] = useState(false);
+  const [reportError, setReportError] = useState("");
+
   const loadJobs = useCallback(async () => {
     try {
       const all = await api.get<Record<string, unknown>[]>("/api/modules/jobs");
@@ -98,6 +105,61 @@ export default function ModulePage() {
         setPolling(false);
       }
     }, 2500);
+  }
+
+  async function generateReport() {
+    if (!selected) return;
+    setGeneratingReport(true);
+    setReportError("");
+    try {
+      const title = reportTitle.trim() || `${mod.label} — ${selected.target ?? moduleId}`;
+      const res = await api.post<{ report_id: string }>("/api/reports", {
+        title,
+        template: reportTemplate,
+        job_ids: [selected.job_id],
+        client_name: reportClient.trim() || undefined,
+      });
+
+      // Poll until pdf_ready
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        try {
+          const rep = await api.get<{ pdf_ready: boolean }>(`/api/reports/${res.report_id}`);
+          if (rep.pdf_ready) {
+            clearInterval(poll);
+            // Fetch with auth header then trigger download via Blob URL
+            const token = localStorage.getItem("access_token");
+            const dlResp = await fetch(`/api/reports/${res.report_id}/download`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!dlResp.ok) throw new Error("Error al descargar el PDF");
+            const blob = await dlResp.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = blobUrl;
+            a.download = `report-${res.report_id.slice(0, 8)}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(blobUrl);
+            setReportModal(false);
+            setGeneratingReport(false);
+          } else if (attempts >= 24) { // 2 min timeout
+            clearInterval(poll);
+            setReportError("El PDF tardó demasiado. Intentá de nuevo.");
+            setGeneratingReport(false);
+          }
+        } catch {
+          clearInterval(poll);
+          setReportError("Error al verificar el estado del reporte.");
+          setGeneratingReport(false);
+        }
+      }, 5000);
+    } catch (e) {
+      setReportError(e instanceof Error ? e.message : "Error al generar reporte");
+      setGeneratingReport(false);
+    }
   }
 
   async function selectJob(job: Record<string, unknown>) {
@@ -274,7 +336,10 @@ export default function ModulePage() {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-xs font-semibold text-sp-muted uppercase tracking-widest">Hallazgos</p>
-                    <button className="sp-btn-ghost text-xs py-1 px-3 flex items-center gap-1">
+                    <button
+                      onClick={() => { setReportModal(true); setReportError(""); setReportTitle(""); setReportClient(""); }}
+                      className="sp-btn-ghost text-xs py-1 px-3 flex items-center gap-1 hover:text-sp-cyan"
+                    >
                       <FileText className="w-3 h-3" />
                       Generar Reporte
                     </button>
@@ -311,6 +376,88 @@ export default function ModulePage() {
           )}
         </div>
       </div>
+      {/* Report generation modal */}
+      {reportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="sp-card w-full max-w-md p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-sp-text text-lg flex items-center gap-2">
+                <FileText className="w-5 h-5 text-sp-cyan" />
+                Generar Reporte
+              </h3>
+              <button onClick={() => setReportModal(false)} className="sp-btn-ghost p-2 rounded-lg" disabled={generatingReport}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {reportError && (
+              <p className="text-sp-critical text-sm bg-sp-critical/10 rounded-lg px-4 py-2">{reportError}</p>
+            )}
+
+            <div className="space-y-3">
+              <label className="block">
+                <span className="text-xs font-semibold text-sp-muted uppercase tracking-wider">Título del reporte</span>
+                <input
+                  className="sp-input mt-1 w-full"
+                  placeholder={`${mod.label} — ${selected?.target ?? moduleId}`}
+                  value={reportTitle}
+                  onChange={(e) => setReportTitle(e.target.value)}
+                  disabled={generatingReport}
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-xs font-semibold text-sp-muted uppercase tracking-wider">Cliente (opcional)</span>
+                <input
+                  className="sp-input mt-1 w-full"
+                  placeholder="Nombre del cliente"
+                  value={reportClient}
+                  onChange={(e) => setReportClient(e.target.value)}
+                  disabled={generatingReport}
+                />
+              </label>
+
+              <div>
+                <span className="text-xs font-semibold text-sp-muted uppercase tracking-wider">Template</span>
+                <div className="relative mt-1">
+                  <select
+                    className="sp-input w-full appearance-none"
+                    value={reportTemplate}
+                    onChange={(e) => setReportTemplate(e.target.value)}
+                    disabled={generatingReport}
+                  >
+                    <option value="technical">Technical — detalle técnico completo</option>
+                    <option value="executive">Executive — resumen ejecutivo</option>
+                    <option value="compliance">Compliance — orientado a normativas</option>
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sp-muted pointer-events-none" />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-sp-bg-secondary rounded-lg px-4 py-3 text-xs text-sp-muted">
+              Scan: <span className="font-mono text-sp-cyan">{selected?.job_id?.slice(0, 8)}...</span>
+              {" · "}{selected?.target}
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setReportModal(false)} className="sp-btn-ghost flex-1" disabled={generatingReport}>
+                Cancelar
+              </button>
+              <button
+                onClick={generateReport}
+                disabled={generatingReport}
+                className="sp-btn-primary flex-1 flex items-center justify-center gap-2"
+              >
+                {generatingReport
+                  ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generando PDF...</>
+                  : <><Download className="w-4 h-4" /> Generar y Descargar</>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

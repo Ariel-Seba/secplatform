@@ -24,6 +24,9 @@ class GenerateRequest(BaseModel):
     job_ids: list[str]
     analyst: str
     metadata: dict = {}
+    findings_by_severity: dict = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+    top_findings: list[dict] = []
+    scan_targets: list[str] = []
 
 
 @app.get("/health")
@@ -47,6 +50,9 @@ async def generate(body: GenerateRequest, _: None = Depends(verify_token)):
                 },
                 "job_ids": body.job_ids,
                 "metadata": body.metadata,
+                "findings_by_severity": body.findings_by_severity,
+                "top_findings": body.top_findings,
+                "scan_targets": body.scan_targets,
             },
             output_path=output_path,
         )
