@@ -1,0 +1,30 @@
+api:
+  dashboard: false
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    exposedByDefault: false
+    network: secplatform-net
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@secplatform.local
+      storage: /certs/acme.json
+      tlsChallenge: {}
+
+log:
+  level: WARN
+
+accessLog: {}

@@ -1,0 +1,18 @@
+framework:
+  - dockerfile
+  - docker_compose
+
+hard-fail-on:
+  - CRITICAL
+  - HIGH
+
+output:
+  - cli
+  - sarif
+
+skip-path:
+  - .git
+  - node_modules
+  - __pycache__
+  - .venv
+  - frontend/.next

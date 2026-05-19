@@ -1,0 +1,52 @@
+name: Deploy to Production
+
+on:
+  workflow_run:
+    workflows: ["Build & Push Docker Images"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy SecPlatform
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/secplatform
+
+            echo "Pulling latest images..."
+            docker compose pull
+
+            echo "Starting databases..."
+            docker compose up -d --no-deps postgres redis
+            sleep 8
+
+            echo "Starting backend services..."
+            docker compose up -d --no-deps backend worker
+            sleep 12
+
+            echo "Starting modules..."
+            docker compose up -d --no-deps module-pentest module-discovery module-compliance report-engine
+            sleep 8
+
+            echo "Starting frontend..."
+            docker compose up -d --no-deps frontend
+
+            sleep 15
+            echo "Health checks..."
+            curl -sf http://localhost:8000/health || (echo "Backend FAIL" && exit 1)
+            echo "Deploy completed successfully"

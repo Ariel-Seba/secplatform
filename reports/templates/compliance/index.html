@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>{{ report.title }} — SecPlatform</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ══ PORTADA ══════════════════════════════════════════════════════════ -->
+<div class="cover-page">
+  <div class="cover-top">
+    <div class="logo">
+      <span class="logo-hex">⬡</span>
+      <span class="logo-text">SEC<span class="cyan">PLATFORM</span></span>
+    </div>
+  </div>
+
+  <div class="cover-body">
+    <div class="cover-tag">INFORME EJECUTIVO DE SEGURIDAD</div>
+    <h1 class="cover-title">{{ report.title }}</h1>
+    <p class="cover-client">{{ report.client }}</p>
+
+    <div class="cover-divider"></div>
+
+    <div class="cover-meta">
+      <div class="meta-item">
+        <span class="meta-label">Fecha</span>
+        <span class="meta-value">{{ report.date }}</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Analista</span>
+        <span class="meta-value">{{ report.analyst }}</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Clasificación</span>
+        <span class="meta-value red">CONFIDENCIAL</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="cover-footer">
+    Documento confidencial. Distribución restringida. SecPlatform v1.0
+  </div>
+</div>
+
+<div class="page-break"></div>
+
+<!-- ══ RESUMEN EJECUTIVO ═════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="section-num">01</div>
+    <h2 class="section-title">Resumen Ejecutivo</h2>
+  </div>
+
+  <div class="exec-summary-box">
+    <p>Este informe presenta los resultados del análisis de seguridad realizado sobre los sistemas de <strong>{{ report.client }}</strong>. Se identificaron vulnerabilidades que requieren atención prioritaria para reducir la exposición al riesgo.</p>
+  </div>
+
+  <!-- Severity counters -->
+  <div class="sev-grid">
+    {% set severities = [
+      ('critical', 'CRÍTICO',  findings_by_severity.critical | default(0)),
+      ('high',     'ALTO',     findings_by_severity.high     | default(0)),
+      ('medium',   'MEDIO',    findings_by_severity.medium   | default(0)),
+      ('low',      'BAJO',     findings_by_severity.low      | default(0)),
+      ('info',     'INFO',     findings_by_severity.info     | default(0)),
+    ] %}
+    {% for sev, label, count in severities %}
+    <div class="sev-card {{ sev }}">
+      <div class="sev-count">{{ count }}</div>
+      <div class="sev-label">{{ label }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="page-break"></div>
+
+<!-- ══ HALLAZGOS PRINCIPALES ════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="section-num">02</div>
+    <h2 class="section-title">Hallazgos Principales</h2>
+  </div>
+
+  {% if top_findings is defined and top_findings %}
+    {% for f in top_findings %}
+    <div class="finding-card {{ f.severity }}">
+      <div class="finding-head">
+        <span class="sev-badge {{ f.severity }}">{{ f.severity | upper }}</span>
+        <span class="finding-title">{{ f.title }}</span>
+        {% if f.cvss_score %}<span class="cvss">CVSS {{ f.cvss_score }}</span>{% endif %}
+      </div>
+      <p class="finding-desc">{{ f.description }}</p>
+      {% if f.remediation %}
+      <div class="finding-rem">
+        <strong>Remediación:</strong> {{ f.remediation }}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="no-data">No se encontraron hallazgos para reportar.</div>
+  {% endif %}
+</div>
+
+<div class="page-break"></div>
+
+<!-- ══ RECOMENDACIONES ═══════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="section-num">03</div>
+    <h2 class="section-title">Plan de Remediación</h2>
+  </div>
+
+  <table class="rem-table">
+    <thead>
+      <tr>
+        <th>#</th><th>Hallazgo</th><th>Severidad</th><th>Plazo Sugerido</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if top_findings is defined %}
+        {% for f in top_findings %}
+        <tr>
+          <td class="mono">{{ loop.index }}</td>
+          <td>{{ f.title }}</td>
+          <td><span class="sev-badge-sm {{ f.severity }}">{{ f.severity | upper }}</span></td>
+          <td>
+            {% if f.severity == 'critical' %}< 24 horas
+            {% elif f.severity == 'high' %}< 7 días
+            {% elif f.severity == 'medium' %}< 30 días
+            {% else %}< 90 días{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="4" style="text-align:center;color:#64748b">Sin datos</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+</body>
+</html>

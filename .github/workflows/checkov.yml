@@ -1,0 +1,86 @@
+name: Security Scan — Checkov
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "**/Dockerfile"
+      - "**/docker-compose*.yml"
+      - "infra/**"
+      - "modules/**/Dockerfile"
+
+jobs:
+  checkov-scan:
+    name: Checkov IaC Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Checkov — Dockerfiles
+        id: checkov_docker
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: dockerfile
+          output_format: sarif
+          output_file_path: checkov-docker.sarif
+          soft_fail: true
+        continue-on-error: true
+
+      - name: Run Checkov — Docker Compose
+        id: checkov_compose
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: infra
+          framework: docker_compose
+          output_format: sarif
+          output_file_path: checkov-compose.sarif
+          soft_fail: true
+        continue-on-error: true
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov-docker.sarif
+          category: checkov-docker
+        continue-on-error: true
+
+      - name: Comment PR with results
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const docker_ok  = '${{ steps.checkov_docker.outcome }}'  === 'success';
+            const compose_ok = '${{ steps.checkov_compose.outcome }}' === 'success';
+            const all_ok = docker_ok && compose_ok;
+
+            const body = [
+              `## ${all_ok ? '✅' : '🚨'} Checkov Security Scan — ${all_ok ? 'PASÓ' : 'FALLÓ'}`,
+              '',
+              '| Check | Resultado |',
+              '|-------|-----------|',
+              `| Dockerfiles     | ${docker_ok  ? '✅ Pasó' : '❌ Falló'} |`,
+              `| Docker Compose  | ${compose_ok ? '✅ Pasó' : '❌ Falló'} |`,
+              '',
+              all_ok ? '' : '> ⚠️ **Corregir los hallazgos antes de mergear.** Revisá **Security → Code scanning alerts**.',
+            ].join('\n');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+      - name: Fail if HIGH/CRITICAL findings
+        if: steps.checkov_docker.outcome == 'failure' || steps.checkov_compose.outcome == 'failure'
+        run: |
+          echo "::error::Checkov encontró problemas de seguridad. Corregir antes de mergear."
+          exit 1

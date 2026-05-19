@@ -1,0 +1,14 @@
+{
+  "id": "compliance",
+  "name": "Compliance",
+  "description": "Compliance module: Docker/IaC security scanning with Checkov, CIS benchmarks",
+  "category": "compliance",
+  "version": "1.0.0",
+  "icon": "shield-check",
+  "color": "#00b894",
+  "tools": ["checkov", "lynis"],
+  "permissions_required": ["module:compliance:execute"],
+  "port": 8003,
+  "async": true,
+  "report_templates": ["compliance", "executive"]
+}

@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { @apply border-sp-border; }
+  body { @apply bg-sp-bg-primary text-sp-text antialiased; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { @apply bg-sp-bg-secondary; }
+  ::-webkit-scrollbar-thumb { @apply bg-sp-border rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-sp-muted; }
+}
+
+@layer components {
+  .sp-card { @apply bg-sp-bg-card border border-sp-border rounded-xl shadow-card; }
+  .sp-glow-hover { @apply transition-all hover:border-sp-cyan/30 hover:shadow-glow-cyan; }
+  .sp-section-header { @apply text-xs font-semibold text-sp-muted uppercase tracking-widest; }
+  .sp-mono { @apply font-mono text-sp-cyan; }
+
+  .sp-input {
+    @apply bg-sp-bg-secondary border border-sp-border rounded-lg px-4 py-2.5
+           text-sp-text placeholder:text-sp-muted
+           focus:outline-none focus:border-sp-cyan/50 focus:ring-1 focus:ring-sp-cyan/20
+           transition-all w-full;
+  }
+
+  .sp-btn-primary {
+    @apply bg-sp-cyan text-sp-bg-primary font-semibold px-4 py-2 rounded-lg
+           hover:bg-sp-cyan/90 transition-all
+           disabled:opacity-50 disabled:cursor-not-allowed
+           flex items-center gap-2;
+  }
+
+  .sp-btn-ghost {
+    @apply border border-sp-border text-sp-muted font-medium px-4 py-2 rounded-lg
+           hover:border-sp-cyan/30 hover:text-sp-text transition-all
+           flex items-center gap-2;
+  }
+
+  .sp-btn-danger {
+    @apply bg-sp-critical/10 border border-sp-critical/30 text-sp-critical font-medium px-4 py-2 rounded-lg
+           hover:bg-sp-critical/20 transition-all flex items-center gap-2;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #111827 25%, #162032 50%, #111827 75%);
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}

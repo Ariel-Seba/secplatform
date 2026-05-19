@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: backend
+    static_configs:
+      - targets: ["backend:8000"]
+    metrics_path: /metrics
+
+  - job_name: module-pentest
+    static_configs:
+      - targets: ["module-pentest:8001"]
+
+  - job_name: module-discovery
+    static_configs:
+      - targets: ["module-discovery:8002"]
+
+  - job_name: module-compliance
+    static_configs:
+      - targets: ["module-compliance:8003"]

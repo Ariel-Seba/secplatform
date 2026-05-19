@@ -1,0 +1,345 @@
+version: "3.9"
+
+networks:
+  secplatform-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  postgres_data:
+  redis_data:
+  reports_output:
+  traefik_certs:
+
+services:
+
+  # ── REVERSE PROXY ──────────────────────────────────────────────────
+  traefik:
+    image: traefik:v3.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:80:80"
+      - "127.0.0.1:443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_certs:/certs
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+    networks:
+      - secplatform-net
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── FRONTEND ───────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      target: production
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - NODE_ENV=production
+    networks:
+      - secplatform-net
+    depends_on:
+      backend:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`${DOMAIN:-secplatform.local}`)"
+      - "traefik.http.routers.frontend.tls=true"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+  # ── BACKEND API ────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      target: production
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://secplatform:${DB_PASSWORD}@postgres:5432/secplatform
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=HS256
+      - MODULE_SECRET=${MODULE_SECRET}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - MODULE_PENTEST_URL=http://module-pentest:8001
+      - MODULE_DISCOVERY_URL=http://module-discovery:8002
+      - MODULE_COMPLIANCE_URL=http://module-compliance:8003
+      - REPORT_ENGINE_URL=http://report-engine:8010
+    networks:
+      - secplatform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.${DOMAIN:-secplatform.local}`)"
+      - "traefik.http.routers.api.tls=true"
+      - "traefik.http.services.api.loadbalancer.server.port=8000"
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+
+  # ── CELERY WORKER ──────────────────────────────────────────────────
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      target: production
+    command: celery -A app.worker worker --loglevel=info --concurrency=4
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://secplatform:${DB_PASSWORD}@postgres:5432/secplatform
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - JWT_SECRET=${JWT_SECRET}
+      - MODULE_SECRET=${MODULE_SECRET}
+    networks:
+      - secplatform-net
+    depends_on:
+      - redis
+      - postgres
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  # ── MODULE: PENTEST ────────────────────────────────────────────────
+  module-pentest:
+    build:
+      context: ../modules/pentest
+      dockerfile: Dockerfile
+      target: production
+    restart: unless-stopped
+    environment:
+      - MODULE_SECRET=${MODULE_SECRET}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
+    networks:
+      - secplatform-net
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+
+  # ── MODULE: DISCOVERY ──────────────────────────────────────────────
+  module-discovery:
+    build:
+      context: ../modules/discovery
+      dockerfile: Dockerfile
+      target: production
+    restart: unless-stopped
+    environment:
+      - MODULE_SECRET=${MODULE_SECRET}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
+    networks:
+      - secplatform-net
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+
+  # ── MODULE: COMPLIANCE ─────────────────────────────────────────────
+  module-compliance:
+    build:
+      context: ../modules/compliance
+      dockerfile: Dockerfile
+      target: production
+    restart: unless-stopped
+    environment:
+      - MODULE_SECRET=${MODULE_SECRET}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
+    networks:
+      - secplatform-net
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+
+  # ── REPORT ENGINE ──────────────────────────────────────────────────
+  report-engine:
+    build:
+      context: ../reports
+      dockerfile: Dockerfile
+      target: production
+    restart: unless-stopped
+    volumes:
+      - reports_output:/app/output
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://secplatform:${DB_PASSWORD}@postgres:5432/secplatform
+      - MODULE_SECRET=${MODULE_SECRET}
+    networks:
+      - secplatform-net
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+
+  # ── POSTGRESQL ─────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=secplatform
+      - POSTGRES_USER=secplatform
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - secplatform-net
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U secplatform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  # ── REDIS ──────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes --loglevel warning
+    volumes:
+      - redis_data:/data
+    networks:
+      - secplatform-net
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  # ── MONITORING ─────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - secplatform-net
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SECURITY_DISABLE_GRAVATAR=true
+    networks:
+      - secplatform-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`monitor.${DOMAIN:-secplatform.local}`)"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M

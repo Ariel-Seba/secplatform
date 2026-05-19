@@ -1,0 +1,14 @@
+{
+  "id": "_template",
+  "name": "Module Template",
+  "description": "Base template for new SecPlatform modules",
+  "category": "template",
+  "version": "1.0.0",
+  "icon": "shield",
+  "color": "#00d4ff",
+  "tools": [],
+  "permissions_required": ["module:_template:execute"],
+  "port": 8099,
+  "async": true,
+  "report_templates": ["technical"]
+}
