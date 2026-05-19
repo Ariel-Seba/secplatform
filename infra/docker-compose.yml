@@ -120,6 +120,8 @@ services:
     depends_on:
       - redis
       - postgres
+    healthcheck:
+      disable: true
     security_opt:
       - no-new-privileges:true
     deploy:
