@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS base
+FROM python:3.12-slim-bookworm AS base
 
 RUN groupadd --gid 1001 reportgroup && \
     useradd --uid 1001 --gid reportgroup --no-create-home --shell /bin/false reportuser
@@ -6,7 +6,7 @@ RUN groupadd --gid 1001 reportgroup && \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
-    libgdk-pixbuf2.0-0 \
+    libgdk-pixbuf-2.0-0 \
     libffi-dev \
     shared-mime-info \
     fonts-liberation \

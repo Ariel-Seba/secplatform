@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS base
+FROM python:3.12-slim-bookworm AS base
 
 RUN groupadd --gid 1001 modulegroup && \
     useradd --uid 1001 --gid modulegroup --no-create-home --shell /bin/false moduleuser
