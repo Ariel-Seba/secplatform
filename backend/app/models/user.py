@@ -34,9 +34,9 @@ class User(Base):
     last_login: Mapped[datetime | None]
 
     groups: Mapped[list["Group"]] = relationship(
-        secondary=UserGroup, back_populates="users"
+        secondary=UserGroup, back_populates="users", lazy="selectin"
     )
-    audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="user")
+    audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="user", lazy="select")
 
     @property
     def role(self) -> UserRole:
@@ -65,5 +65,5 @@ class Group(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
     users: Mapped[list["User"]] = relationship(
-        secondary=UserGroup, back_populates="groups"
+        secondary=UserGroup, back_populates="groups", lazy="selectin"
     )
