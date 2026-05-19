@@ -1,3 +1,6 @@
+# Skills (local-only, not part of the platform codebase)
+*.skill
+
 # Environment
 .env
 .env.local
